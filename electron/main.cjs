@@ -19,19 +19,24 @@ function projectRoot() {
   return path.join(__dirname, "..");
 }
 
+function resolvePython(runtime) {
+  const candidates =
+    process.platform === "win32"
+      ? [path.join(runtime, "python.exe"), path.join(runtime, "bin", "python.exe")]
+      : [
+          path.join(runtime, "bin", "python3"),
+          path.join(runtime, "bin", "python3.12"),
+          path.join(runtime, "bin", "python"),
+        ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+}
+
 function pythonBin() {
   if (app.isPackaged) {
-    const runtime = path.join(packagedRoot(), "python");
-    return process.platform === "win32"
-      ? path.join(runtime, "python.exe")
-      : path.join(runtime, "bin", "python3");
+    return resolvePython(path.join(packagedRoot(), "python"));
   }
-  const bundled = path.join(projectRoot(), "python-runtime");
-  const bundledBin =
-    process.platform === "win32"
-      ? path.join(bundled, "python.exe")
-      : path.join(bundled, "bin", "python3");
-  if (fs.existsSync(bundledBin)) return bundledBin;
+  const bundled = resolvePython(path.join(projectRoot(), "python-runtime"));
+  if (fs.existsSync(bundled)) return bundled;
   return process.platform === "win32" ? "python" : "python3";
 }
 
