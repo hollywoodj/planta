@@ -26,3 +26,5 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Electron main process syntax
+        run: node --check electron/main.cjs

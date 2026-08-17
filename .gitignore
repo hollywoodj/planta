@@ -21,6 +21,11 @@ frontend/.vite/
 .cache/
 uploads/
 
+# Electron
+python-runtime/
+release/
+dist/
+
 # Env / OS
 .env
 .env.local

@@ -161,6 +161,9 @@ async def scan(file: UploadFile = File(...)) -> ScanResult:
     )
 
 
-FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+FRONTEND_DIST = Path(
+    os.environ.get("PLANTA_STATIC_DIR")
+    or (Path(__file__).resolve().parents[2] / "frontend" / "dist")
+)
 if FRONTEND_DIST.is_dir():
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")

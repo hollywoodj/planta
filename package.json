@@ -1,0 +1,86 @@
+{
+  "name": "planta",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Photograph a leaf and identify crop diseases.",
+  "author": "Planta",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev:web": "npm --prefix frontend run dev",
+    "dev:api": "cross-env PYTHONPATH=backend ./scripts/dev-api.sh",
+    "build:web": "npm --prefix frontend run build",
+    "electron:dev": "concurrently -k -s first \"npm run dev:api\" \"npm run dev:web\" \"wait-on http://127.0.0.1:5173 && wait-on http://127.0.0.1:8000/api/health && cross-env ELECTRON_START_URL=http://127.0.0.1:5173 electron .\"",
+    "bundle:python": "node scripts/bundle-python.mjs",
+    "electron:pack": "npm run build:web && npm run bundle:python && electron-builder --dir --publish never",
+    "electron:build": "npm run build:web && npm run bundle:python && electron-builder --publish never",
+    "electron:build:mac": "npm run build:web && npm run bundle:python && electron-builder --mac --publish never",
+    "electron:build:win": "npm run build:web && npm run bundle:python && electron-builder --win --publish never",
+    "test": "PLANTA_STUB_MODEL=1 python3 -m pytest -q"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "app.planta.desktop",
+    "productName": "Planta",
+    "copyright": "Copyright © 2026 Planta",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "python-runtime",
+        "to": "python"
+      },
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!**/tests/**",
+          "!**/.pytest_cache/**"
+        ]
+      },
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
+      }
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.lifestyle",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Planta uses the camera to photograph plant leaves for disease identification."
+      }
+    },
+    "dmg": {
+      "title": "Planta ${version}",
+      "backgroundColor": "#143326"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Planta"
+    }
+  }
+}

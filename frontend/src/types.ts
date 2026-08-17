@@ -76,3 +76,12 @@ export type HistoryItem = {
 }
 
 export type View = "scan" | "library" | "history"
+
+declare global {
+  interface Window {
+    plantaDesktop?: {
+      platform: string
+      onMenuCommand: (callback: (command: { type: string }) => void) => () => void
+    }
+  }
+}

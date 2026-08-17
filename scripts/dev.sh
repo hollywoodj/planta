@@ -8,6 +8,11 @@ if [[ ! -d .venv ]]; then
   exit 1
 fi
 
+if [[ "${1:-}" == "electron" ]]; then
+  npm run electron:dev
+  exit 0
+fi
+
 # shellcheck disable=SC1091
 source .venv/bin/activate
 export PYTHONPATH="$ROOT/backend"

@@ -25,6 +25,15 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    return window.plantaDesktop?.onMenuCommand((command) => {
+      if (command.type === "scan") {
+        setView("scan")
+        setResult(null)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     async function poll() {
       try {
