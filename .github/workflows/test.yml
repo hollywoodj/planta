@@ -27,4 +27,6 @@ jobs:
           npm ci
           npm run build
       - name: Electron main process syntax
-        run: node --check electron/main.cjs
+        run: |
+          node --check electron/main.cjs
+          node --check scripts/bundle-python.mjs

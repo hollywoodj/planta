@@ -1,5 +1,5 @@
-import { createWriteStream, existsSync } from "node:fs";
-import { chmod, cp, mkdir, rm } from "node:fs/promises";
+import { createWriteStream, existsSync, readdirSync } from "node:fs";
+import { mkdir, rm, stat } from "node:fs/promises";
 import { get } from "node:https";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -13,8 +13,7 @@ const RUNTIME = join(ROOT, "python-runtime");
 const STANDALONE_TAG = "20260814";
 const CPYTHON = "3.12.14";
 
-function assetName() {
-  const { platform, arch } = process;
+export function assetName(platform = process.platform, arch = process.arch) {
   if (platform === "darwin" && arch === "arm64") {
     return `cpython-${CPYTHON}+${STANDALONE_TAG}-aarch64-apple-darwin-install_only.tar.gz`;
   }
@@ -30,10 +29,16 @@ function assetName() {
   return `cpython-${CPYTHON}+${STANDALONE_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz`;
 }
 
-function pythonBin() {
-  return process.platform === "win32"
-    ? join(RUNTIME, "python.exe")
-    : join(RUNTIME, "bin", "python3");
+export function pythonBin(runtime = RUNTIME, platform = process.platform) {
+  const candidates =
+    platform === "win32"
+      ? [join(runtime, "python.exe"), join(runtime, "bin", "python.exe")]
+      : [
+          join(runtime, "bin", "python3"),
+          join(runtime, "bin", "python3.12"),
+          join(runtime, "bin", "python"),
+        ];
+  return candidates.find((path) => existsSync(path)) ?? candidates[0];
 }
 
 function download(url, dest) {
@@ -42,7 +47,7 @@ function download(url, dest) {
       get(current, (response) => {
         const location = response.headers.location;
         if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && location) {
-          request(location);
+          request(new URL(location, current).toString());
           return;
         }
         if (response.statusCode !== 200) {
@@ -60,6 +65,15 @@ function pip(bin, args) {
   execFileSync(bin, ["-m", "pip", ...args], { stdio: "inherit", cwd: ROOT });
 }
 
+function describeRuntime() {
+  const binDir = join(RUNTIME, "bin");
+  if (!existsSync(binDir)) {
+    const top = existsSync(RUNTIME) ? readdirSync(RUNTIME).join(", ") : "(missing)";
+    return `python-runtime contents: ${top}`;
+  }
+  return `python-runtime/bin: ${readdirSync(binDir).join(", ")}`;
+}
+
 async function main() {
   if (existsSync(pythonBin()) && !process.env.FORCE_BUNDLE) {
     console.log(`python-runtime already exists at ${RUNTIME}`);
@@ -67,25 +81,28 @@ async function main() {
   }
 
   await rm(RUNTIME, { recursive: true, force: true });
-  const archive = join(tmpdir(), assetName());
-  const url = `https://github.com/astral-sh/python-build-standalone/releases/download/${STANDALONE_TAG}/${assetName()}`;
+  await mkdir(RUNTIME, { recursive: true });
+
+  const name = assetName();
+  const archive = join(tmpdir(), name.replaceAll("+", "_"));
+  const url = `https://github.com/astral-sh/python-build-standalone/releases/download/${STANDALONE_TAG}/${name.replaceAll("+", "%2B")}`;
   console.log(`Downloading ${url}`);
   await download(url, archive);
 
-  const extractDir = join(tmpdir(), `planta-python-${process.pid}`);
-  await rm(extractDir, { recursive: true, force: true });
-  await mkdir(extractDir, { recursive: true });
-  execFileSync("tar", ["-xzf", archive, "-C", extractDir], { stdio: "inherit" });
-
-  const unpacked = join(extractDir, "python");
-  if (!existsSync(unpacked)) {
-    throw new Error(`Unexpected python-build-standalone layout in ${extractDir}`);
+  const downloaded = await stat(archive);
+  if (downloaded.size < 1_000_000) {
+    throw new Error(`Standalone Python download is too small (${downloaded.size} bytes)`);
   }
-  await cp(unpacked, RUNTIME, { recursive: true });
-  await rm(extractDir, { recursive: true, force: true });
+
+  // tar preserves python3 -> python3.12 symlinks; Node fs.cp on macOS does not.
+  execFileSync("tar", ["-xzf", archive, "-C", RUNTIME, "--strip-components=1"], {
+    stdio: "inherit",
+  });
 
   const bin = pythonBin();
-  if (process.platform !== "win32") await chmod(bin, 0o755);
+  if (!existsSync(bin)) {
+    throw new Error(`Python binary missing at ${bin}. ${describeRuntime()}`);
+  }
 
   pip(bin, ["install", "-U", "pip"]);
   pip(bin, ["install", "-r", join(ROOT, "backend", "requirements.txt")]);
