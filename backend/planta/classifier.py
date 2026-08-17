@@ -37,7 +37,6 @@ class PlantClassifier:
             try:
                 CACHE_DIR.mkdir(parents=True, exist_ok=True)
                 os.environ.setdefault("HF_HOME", str(CACHE_DIR))
-                os.environ.setdefault("TRANSFORMERS_CACHE", str(CACHE_DIR))
                 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
                 import torch
