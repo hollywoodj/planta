@@ -7,8 +7,15 @@ def test_health_reports_stub_model(client):
     body = response.json()
     assert body["status"] == "ok"
     assert body["model_ready"] is True
+    assert body["model_loading"] is False
     assert body["classes"] == 38
     assert body["model"] == "stub"
+
+
+def test_reload_model_endpoint(client):
+    response = client.post("/api/model/reload")
+    assert response.status_code == 200
+    assert response.json()["model_ready"] is True
 
 
 def test_diseases_endpoint_lists_all(client):
@@ -68,3 +75,31 @@ def test_scan_rejects_non_image(client):
         files={"file": ("notes.txt", b"hello", "text/plain")},
     )
     assert response.status_code == 400
+
+
+def test_scan_accepts_jpeg_with_exif_orientation(client):
+    from io import BytesIO
+
+    from PIL import Image
+
+    image = Image.new("RGB", (160, 80), (34, 120, 56))
+    exif = image.getexif()
+    exif[0x0112] = 6
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", exif=exif)
+    response = client.post(
+        "/api/scan",
+        files={"file": ("leaf.jpg", buffer.getvalue(), "image/jpeg")},
+    )
+    assert response.status_code == 200
+    assert response.json()["top"]["id"] == "Tomato___Early_blight"
+
+
+def test_scan_rejects_pixel_bomb(client, monkeypatch):
+    monkeypatch.setattr("planta.main.MAX_PIXELS", 1000)
+    response = client.post(
+        "/api/scan",
+        files={"file": ("leaf.png", make_png(size=224), "image/png")},
+    )
+    assert response.status_code == 400
+    assert "too large" in response.json()["detail"]

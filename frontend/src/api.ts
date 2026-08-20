@@ -19,6 +19,12 @@ export async function getHealth(): Promise<HealthStatus> {
   return response.json() as Promise<HealthStatus>
 }
 
+export async function reloadModel(): Promise<HealthStatus> {
+  const response = await fetch("/api/model/reload", { method: "POST" })
+  if (!response.ok) throw new Error(await readError(response))
+  return response.json() as Promise<HealthStatus>
+}
+
 export async function getDiseases(): Promise<Disease[]> {
   const response = await fetch("/api/diseases")
   if (!response.ok) throw new Error(await readError(response))

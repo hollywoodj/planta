@@ -17,6 +17,32 @@ const TIPS = [
   "This model knows 14 crops. Houseplants and trees outside that list will be a guess.",
 ]
 
+async function waitForVideo(video: HTMLVideoElement, stream: MediaStream) {
+  video.srcObject = stream
+  video.muted = true
+  video.playsInline = true
+  await video.play()
+  if (video.videoWidth && video.videoHeight) return
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup()
+      reject(new Error("Camera did not produce a frame"))
+    }, 4000)
+    const onReady = () => {
+      if (!video.videoWidth) return
+      cleanup()
+      resolve()
+    }
+    const cleanup = () => {
+      window.clearTimeout(timeout)
+      video.removeEventListener("loadeddata", onReady)
+      video.removeEventListener("playing", onReady)
+    }
+    video.addEventListener("loadeddata", onReady)
+    video.addEventListener("playing", onReady)
+  })
+}
+
 export function Scanner({ modelReady, onResult }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -32,9 +58,42 @@ export function Scanner({ modelReady, onResult }: Props) {
     return () => stopCamera()
   }, [])
 
+  useEffect(() => {
+    if (!cameraOpen) return
+    const video = videoRef.current
+    const stream = streamRef.current
+    if (!video || !stream) return
+    let cancelled = false
+    void waitForVideo(video, stream).catch((err: unknown) => {
+      if (cancelled) return
+      stopCamera()
+      setError(err instanceof Error ? err.message : "Camera did not produce a frame")
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [cameraOpen])
+
+  useEffect(() => {
+    if (!cameraOpen) return
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        stopCamera()
+      }
+      if (event.key === " " || event.key === "Enter") {
+        event.preventDefault()
+        void snap()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [cameraOpen])
+
   function stopCamera() {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
     setCameraOpen(false)
   }
 
@@ -58,17 +117,22 @@ export function Scanner({ modelReady, onResult }: Props) {
       })
       streamRef.current = stream
       setCameraOpen(true)
-      requestAnimationFrame(() => {
-        if (videoRef.current) videoRef.current.srcObject = stream
-      })
-    } catch {
-      setError("Camera permission was denied. You can still upload a photo.")
+    } catch (err) {
+      stopCamera()
+      if (err instanceof DOMException && err.name === "NotAllowedError") {
+        setError("Camera permission was denied. You can still upload a photo.")
+        return
+      }
+      setError(err instanceof Error ? err.message : "Camera permission was denied. You can still upload a photo.")
     }
   }
 
   async function snap() {
     const video = videoRef.current
-    if (!video) return
+    if (!video || !video.videoWidth) {
+      setError("Camera is not ready yet")
+      return
+    }
     try {
       const frame = await captureFrame(video)
       stopCamera()
@@ -94,6 +158,14 @@ export function Scanner({ modelReady, onResult }: Props) {
         confidence: result.top.confidence,
         healthy: result.healthy,
         severity: result.top.disease?.severity ?? "none",
+        confidenceBand: result.confidence_band,
+        note: result.note,
+        alternatives: result.alternatives.map((alt) => ({
+          id: alt.id,
+          crop: alt.crop,
+          name: alt.name,
+          confidence: alt.confidence,
+        })),
       }
       const history = pushHistory(item)
       onResult(result, preview, history)
@@ -178,7 +250,7 @@ export function Scanner({ modelReady, onResult }: Props) {
         </button>
       )}
 
-      {error && <p className="banner error">{error}</p>}
+      {error && <p className="banner error" role="alert">{error}</p>}
       {!modelReady && (
         <p className="banner">
           The recognition model is still loading on the server. You can frame a photo while you wait.
@@ -192,13 +264,14 @@ export function Scanner({ modelReady, onResult }: Props) {
       </ul>
 
       {cameraOpen && (
-        <div className="camera-modal" role="dialog" aria-label="Camera">
+        <div className="camera-modal" role="dialog" aria-modal="true" aria-label="Camera">
           <video ref={videoRef} autoPlay playsInline muted className="camera-video" />
           <div className="camera-bar">
             <button type="button" className="btn ghost" onClick={stopCamera}>
               Cancel
             </button>
             <button type="button" className="shutter" onClick={() => void snap()} aria-label="Capture" />
+            <p className="camera-hint">Esc cancel · Space capture</p>
           </div>
         </div>
       )}

@@ -54,6 +54,7 @@ class HealthResponse(BaseModel):
     model: str
     model_ready: bool
     model_error: str | None = None
+    model_loading: bool = False
     classes: int
     version: str
 

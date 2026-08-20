@@ -8,6 +8,12 @@ type Props = {
   onSelect: (id: string | null) => void
 }
 
+const KIND_LABEL = {
+  organic: "Organic",
+  cultural: "Garden practice",
+  chemical: "Conventional",
+} as const
+
 export function Library({ diseases, crops, selectedId, onSelect }: Props) {
   const [query, setQuery] = useState("")
   const [crop, setCrop] = useState("All")
@@ -18,12 +24,15 @@ export function Library({ diseases, crops, selectedId, onSelect }: Props) {
     return diseases.filter((row) => {
       if (crop !== "All" && row.crop !== crop) return false
       if (!needle) return true
-      const hay = `${row.crop} ${row.name} ${row.scientific_name ?? ""} ${row.summary}`.toLowerCase()
+      const hay = `${row.crop} ${row.name} ${row.scientific_name ?? ""} ${row.summary} ${row.symptoms.join(" ")}`.toLowerCase()
       return hay.includes(needle)
     })
   }, [diseases, query, crop])
 
   if (selected) {
+    const similar = selected.similar
+      .map((id) => diseases.find((row) => row.id === id))
+      .filter((row): row is Disease => Boolean(row))
     return (
       <section className="panel library-detail">
         <button type="button" className="text-btn" onClick={() => onSelect(null)}>
@@ -34,6 +43,7 @@ export function Library({ diseases, crops, selectedId, onSelect }: Props) {
         <div className="meta-row">
           <span className={`pill severity-${selected.severity}`}>{selected.severity}</span>
           <span className="pill muted">{selected.pathogen_type}</span>
+          {selected.contagious && <span className="pill warn">Spreads</span>}
         </div>
         {selected.scientific_name && (
           <p className="scientific">
@@ -47,9 +57,16 @@ export function Library({ diseases, crops, selectedId, onSelect }: Props) {
             <li key={item}>{item}</li>
           ))}
         </ul>
+        <h2>Why it happens</h2>
+        <ul>
+          {selected.causes.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
         <h2>Treatment</h2>
         {selected.treatments.map((treatment) => (
           <div key={treatment.title} className="treatment">
+            <span className={`kind kind-${treatment.kind}`}>{KIND_LABEL[treatment.kind]}</span>
             <h3>{treatment.title}</h3>
             <p>{treatment.details}</p>
           </div>
@@ -60,6 +77,18 @@ export function Library({ diseases, crops, selectedId, onSelect }: Props) {
             <li key={item}>{item}</li>
           ))}
         </ul>
+        {similar.length > 0 && (
+          <>
+            <h2>Easy to confuse with</h2>
+            <div className="chip-row">
+              {similar.map((row) => (
+                <button key={row.id} type="button" className="chip" onClick={() => onSelect(row.id)}>
+                  {row.name}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </section>
     )
   }
@@ -79,22 +108,26 @@ export function Library({ diseases, crops, selectedId, onSelect }: Props) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <select value={crop} onChange={(event) => setCrop(event.target.value)}>
+        <select value={crop} onChange={(event) => setCrop(event.target.value)} aria-label="Filter by crop">
           <option>All</option>
           {crops.map((row) => (
             <option key={row.name}>{row.name}</option>
           ))}
         </select>
       </div>
-      <div className="library-grid">
-        {filtered.map((row) => (
-          <button key={row.id} type="button" className="lib-card" onClick={() => onSelect(row.id)}>
-            <span className="lib-crop">{row.crop}</span>
-            <strong>{row.name}</strong>
-            <span className={`pill severity-${row.severity}`}>{row.severity}</span>
-          </button>
-        ))}
-      </div>
+      {filtered.length === 0 ? (
+        <p className="lede">No ailments match that search. Try a crop name or a symptom like “blight”.</p>
+      ) : (
+        <div className="library-grid">
+          {filtered.map((row) => (
+            <button key={row.id} type="button" className="lib-card" onClick={() => onSelect(row.id)}>
+              <span className="lib-crop">{row.crop}</span>
+              <strong>{row.name}</strong>
+              <span className={`pill severity-${row.severity}`}>{row.severity}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   )
 }

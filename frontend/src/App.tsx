@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { getCrops, getDiseases, getHealth } from "./api"
+import { getCrops, getDiseases, getHealth, reloadModel } from "./api"
+import { hydrateScan, scanFromHistory } from "./diagnosis"
 import { History } from "./History"
 import { BookIcon, ClockIcon, LeafMark } from "./icons"
 import { Library } from "./Library"
@@ -14,10 +15,12 @@ export default function App() {
   const [crops, setCrops] = useState<CropSummary[]>([])
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory())
   const [modelReady, setModelReady] = useState(false)
+  const [modelLoading, setModelLoading] = useState(true)
   const [modelError, setModelError] = useState<string | null>(null)
   const [result, setResult] = useState<ScanResult | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
 
   useEffect(() => {
     void getDiseases().then(setDiseases).catch(() => undefined)
@@ -25,23 +28,34 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (diseases.length === 0) return
+    setResult((current) => (current ? hydrateScan(current, diseases) : current))
+  }, [diseases])
+
+  useEffect(() => {
     return window.plantaDesktop?.onMenuCommand((command) => {
       if (command.type === "scan") {
         setView("scan")
         setResult(null)
+        setPreview(null)
       }
     })
   }, [])
 
   useEffect(() => {
     let cancelled = false
+    let delay = 1500
     async function poll() {
       try {
         const health = await getHealth()
         if (cancelled) return
         setModelReady(health.model_ready)
         setModelError(health.model_error)
-        if (!health.model_ready) window.setTimeout(() => void poll(), 1500)
+        setModelLoading(Boolean(health.model_loading) && !health.model_ready)
+        if (!health.model_ready) {
+          delay = health.model_error ? Math.min(delay * 1.6, 10_000) : 1500
+          window.setTimeout(() => void poll(), delay)
+        }
       } catch {
         if (!cancelled) window.setTimeout(() => void poll(), 2000)
       }
@@ -52,27 +66,60 @@ export default function App() {
     }
   }, [])
 
+  async function retryModel() {
+    setRetrying(true)
+    try {
+      const health = await reloadModel()
+      setModelReady(health.model_ready)
+      setModelError(health.model_error)
+      setModelLoading(true)
+    } catch (err) {
+      setModelError(err instanceof Error ? err.message : "Could not reload the model")
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  const statusLabel = modelReady
+    ? "Model ready"
+    : modelError
+      ? modelLoading || retrying
+        ? "Retrying model"
+        : "Model failed"
+      : "Loading model"
+
   return (
     <div className="app">
       <header className="topbar">
-        <button type="button" className="brand" onClick={() => { setView("scan"); setResult(null) }}>
+        <button type="button" className="brand" onClick={() => { setView("scan"); setResult(null); setPreview(null) }}>
           <LeafMark className="logo" />
           <span>
             Planta
             <small>leaf disease clinic</small>
           </span>
         </button>
-        <div className={`status ${modelReady ? "ok" : modelError ? "bad" : "wait"}`}>
-          {modelReady ? "Model ready" : modelError ? "Model failed" : "Loading model"}
+        <div className="status-cluster">
+          <div
+            className={`status ${modelReady ? "ok" : modelError ? "bad" : "wait"}`}
+            title={modelError ?? undefined}
+          >
+            {statusLabel}
+          </div>
+          {modelError && !modelReady && (
+            <button type="button" className="text-btn" onClick={() => void retryModel()} disabled={retrying}>
+              {retrying ? "Retrying…" : "Retry"}
+            </button>
+          )}
         </div>
       </header>
 
       <main>
-        {view === "scan" && result && preview ? (
+        {view === "scan" && result ? (
           <Result
             result={result}
             preview={preview}
             diseases={diseases}
+            onChange={setResult}
             onRescan={() => {
               setResult(null)
               setPreview(null)
@@ -102,10 +149,12 @@ export default function App() {
           <History
             items={history}
             onOpen={(item) => {
-              setSelectedId(item.label)
-              setView("library")
+              setResult(scanFromHistory(item, diseases))
+              setPreview(item.dataUrl || null)
+              setView("scan")
             }}
             onClear={() => {
+              if (!window.confirm("Clear all saved leaf scans from this device?")) return
               clearHistory()
               setHistory([])
             }}
@@ -114,19 +163,30 @@ export default function App() {
       </main>
 
       <nav className="dock" aria-label="Primary">
-        <button type="button" className={view === "scan" ? "active" : ""} onClick={() => { setView("scan"); setResult(null) }}>
+        <button
+          type="button"
+          className={view === "scan" ? "active" : ""}
+          aria-current={view === "scan" ? "page" : undefined}
+          onClick={() => { setView("scan"); setResult(null); setPreview(null) }}
+        >
           <LeafMark className="dock-icon" />
           Scan
         </button>
         <button
           type="button"
           className={view === "library" ? "active" : ""}
+          aria-current={view === "library" ? "page" : undefined}
           onClick={() => { setView("library"); setSelectedId(null) }}
         >
           <BookIcon className="dock-icon" />
           Guide
         </button>
-        <button type="button" className={view === "history" ? "active" : ""} onClick={() => setView("history")}>
+        <button
+          type="button"
+          className={view === "history" ? "active" : ""}
+          aria-current={view === "history" ? "page" : undefined}
+          onClick={() => setView("history")}
+        >
           <ClockIcon className="dock-icon" />
           History
         </button>
