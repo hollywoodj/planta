@@ -1,9 +1,12 @@
+import { useEffect, useState } from "react"
+import { promotePrediction } from "./diagnosis"
 import type { Disease, ScanResult } from "./types"
 
 type Props = {
   result: ScanResult
-  preview: string
+  preview: string | null
   diseases: Disease[]
+  onChange: (result: ScanResult) => void
   onRescan: () => void
   onOpenDisease: (id: string) => void
 }
@@ -14,30 +17,51 @@ const KIND_LABEL = {
   chemical: "Conventional",
 } as const
 
-export function Result({ result, preview, diseases, onRescan, onOpenDisease }: Props) {
-  const disease = result.top.disease
+export function Result({ result, preview, diseases, onChange, onRescan, onOpenDisease }: Props) {
+  const [active, setActive] = useState(result)
+
+  useEffect(() => {
+    setActive(result)
+  }, [result])
+
+  const disease = active.top.disease
   const similar = (disease?.similar ?? [])
     .map((id) => diseases.find((row) => row.id === id))
     .filter((row): row is Disease => Boolean(row))
 
+  function selectAlternative(id: string) {
+    const next = active.alternatives.find((row) => row.id === id)
+    if (!next) {
+      onOpenDisease(id)
+      return
+    }
+    const updated = promotePrediction(active, next)
+    setActive(updated)
+    onChange(updated)
+  }
+
   return (
     <section className="panel result">
       <div className="result-hero">
-        <img src={preview} alt="" className="result-photo" />
+        {preview ? (
+          <img src={preview} alt="" className="result-photo" />
+        ) : (
+          <div className="result-photo missing">Photo was dropped to save space on this device.</div>
+        )}
         <div className="result-headline">
-          <p className="eyebrow">{result.top.crop}</p>
-          <h1>{result.top.name}</h1>
+          <p className="eyebrow">{active.top.crop}</p>
+          <h1>{active.top.name}</h1>
           <div className="meta-row">
             <span className={`pill severity-${disease?.severity ?? "none"}`}>
-              {result.healthy ? "Healthy" : (disease?.severity ?? "unknown")}
+              {active.healthy ? "Healthy" : (disease?.severity ?? "unknown")}
             </span>
-            {disease && !result.healthy && (
+            {disease && !active.healthy && (
               <span className="pill muted">{disease.pathogen_type}</span>
             )}
             {disease?.contagious && <span className="pill warn">Spreads</span>}
           </div>
-          <p className="lede">{result.note}</p>
-          <Confidence value={result.top.confidence} band={result.confidence_band} />
+          <p className="lede">{active.note}</p>
+          <Confidence value={active.top.confidence} band={active.confidence_band} />
         </div>
       </div>
 
@@ -89,16 +113,17 @@ export function Result({ result, preview, diseases, onRescan, onOpenDisease }: P
         </>
       )}
 
-      {result.alternatives.length > 0 && (
+      {active.alternatives.length > 0 && (
         <div>
           <h2>Other possible matches</h2>
+          <p className="lede">Tap one to read it as the diagnosis without leaving this scan.</p>
           <div className="alt-grid">
-            {result.alternatives.map((alt) => (
+            {active.alternatives.map((alt) => (
               <button
                 key={alt.id}
                 type="button"
                 className="alt-card"
-                onClick={() => onOpenDisease(alt.id)}
+                onClick={() => selectAlternative(alt.id)}
               >
                 <strong>
                   {alt.crop} · {alt.name}

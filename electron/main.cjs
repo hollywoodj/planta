@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, shell, dialog, session } = require("electron")
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
+const net = require("net");
 const { spawn } = require("child_process");
 
 const APP_NAME = "Planta";
@@ -48,6 +49,21 @@ function staticDir() {
   return app.isPackaged
     ? path.join(packagedRoot(), "frontend", "dist")
     : path.join(projectRoot(), "frontend", "dist");
+}
+
+function findFreePort(preferred = DEFAULT_PORT) {
+  const tryListen = (port) =>
+    new Promise((resolve, reject) => {
+      const server = net.createServer();
+      server.unref();
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", () => {
+        const address = server.address();
+        const resolved = typeof address === "object" && address ? address.port : port;
+        server.close((err) => (err ? reject(err) : resolve(resolved)));
+      });
+    });
+  return tryListen(preferred).catch(() => tryListen(0));
 }
 
 function waitForHealth(port, attempts = 80) {
@@ -242,6 +258,7 @@ if (!gotLock) {
       if (process.env.ELECTRON_START_URL) {
         await loadApp(process.env.ELECTRON_START_URL);
       } else {
+        serverPort = await findFreePort(DEFAULT_PORT);
         await startBackend();
         await loadApp(`http://127.0.0.1:${serverPort}/`);
       }

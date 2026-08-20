@@ -53,6 +53,7 @@ export type HealthStatus = {
   model: string
   model_ready: boolean
   model_error: string | null
+  model_loading?: boolean
   classes: number
   version: string
 }
@@ -61,6 +62,13 @@ export type CropSummary = {
   name: string
   disease_count: number
   ailments: string[]
+}
+
+export type HistoryAlternative = {
+  id: string
+  crop: string
+  name: string
+  confidence: number
 }
 
 export type HistoryItem = {
@@ -73,6 +81,9 @@ export type HistoryItem = {
   confidence: number
   healthy: boolean
   severity: Severity
+  confidenceBand?: ConfidenceBand
+  note?: string
+  alternatives?: HistoryAlternative[]
 }
 
 export type View = "scan" | "library" | "history"

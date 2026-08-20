@@ -21,7 +21,11 @@ export function History({ items, onOpen, onClear }: Props) {
           <div className="history-list">
             {items.map((item) => (
               <button key={item.id} type="button" className="history-row" onClick={() => onOpen(item)}>
-                <img src={item.dataUrl} alt="" />
+                {item.dataUrl ? (
+                  <img src={item.dataUrl} alt="" />
+                ) : (
+                  <span className="history-placeholder" aria-hidden="true" />
+                )}
                 <span>
                   <strong>
                     {item.crop} · {item.name}
